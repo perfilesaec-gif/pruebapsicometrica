@@ -115,12 +115,12 @@ $('importFile').onchange = async e => {
 $('exportJson').onclick = () => downloadFile(`respaldo_resultados_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadResults(), null, 2), 'application/json');
 
 $('exportCsv').onclick = () => {
-  const cols = ['Fecha', 'Nombres', 'Documento', 'Correo', 'Cargo', 'Prueba', 'Duración (min)', 'Resultado', 'D', 'I', 'S', 'C', 'Extraversión', 'Amabilidad', 'Responsabilidad', 'Estabilidad emocional', 'Apertura', 'Aciertos', '% Aciertos'];
+  const cols = ['Fecha', 'Nombres', 'Documento', 'Correo', 'Cargo', 'Prueba', 'Duración (min)', 'Resultado', 'D', 'I', 'S', 'C', 'Extraversión', 'Amabilidad', 'Responsabilidad', 'Estabilidad emocional', 'Apertura', 'Aciertos', '% Aciertos', 'Detalle'];
   const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = loadResults().map(r => {
     const x = r.resultado, d = x.dif || {}, p = x.puntajes || {};
     return [fmtDate(r.fecha), r.candidato.nombre, r.candidato.documento, r.candidato.correo, r.candidato.cargo, r.pruebaNombre,
-      (r.duracionSeg / 60).toFixed(1), x.resumen, d.D, d.I, d.S, d.C, p.E, p.A, p.C, p.N, p.O, x.correctas, x.pct].map(cell).join(';');
+      (r.duracionSeg / 60).toFixed(1), x.resumen, d.D, d.I, d.S, d.C, p.E, p.A, p.C, p.N, p.O, x.correctas, x.pct, TESTS[r.prueba]?.detalle ? TESTS[r.prueba].detalle(x) : ''].map(cell).join(';');
   });
   downloadFile(`resultados_${new Date().toISOString().slice(0, 10)}.csv`, '﻿' + [cols.map(cell).join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
 };
@@ -202,6 +202,108 @@ function reportChoice(r, t) {
     </div>`;
 }
 
+function report16pf(r) {
+  const x = r.resultado;
+  const cells = s => Array.from({ length: 10 }, (_, i) => `<span class="${i + 1 === s ? 'on' : i >= 3 && i <= 6 ? 'mid' : ''}">${i + 1}</span>`).join('');
+  const extremos = Object.keys(PF16_FACTORS).filter(k => x.decatipos[k] <= 3 || x.decatipos[k] >= 8);
+  return `
+    ${x.manejoImagenAlto ? `<div class="note" style="margin:0 0 24px;border-color:#FCA5A5;background:#FEF2F2;color:#991B1B"><strong>Atención — Manejo de imagen alto (${x.manejoImagen}/20).</strong> La persona respondió de forma que tiende a dar una imagen muy favorable de sí. Interprete el perfil con cautela y contrástelo en la entrevista.</div>` : ''}
+    <div class="card">
+      <h2>Perfil de los 16 factores primarios</h2>
+      <p>Decatipos referenciales del 1 al 10. La franja central (4–7) corresponde a valores promedio; los extremos (1–3 y 8–10) describen rasgos marcados hacia el polo izquierdo o derecho.</p>
+      <div class="table-wrap"><table class="sten-table">
+        <thead><tr><th>Factor</th><th style="text-align:right">Polo bajo (1–3)</th><th>Decatipo</th><th>Polo alto (8–10)</th></tr></thead>
+        <tbody>${Object.entries(PF16_FACTORS).map(([k, f]) => `
+          <tr><td class="fac">${k} · ${esc(f.nombre)}</td><td class="pole r">${esc(f.polos[0])}</td><td><div class="sten-cells">${cells(x.decatipos[k])}</div></td><td class="pole">${esc(f.polos[1])}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Dimensiones globales</h2>
+      <div class="bars">${Object.entries(PF16_GLOBALS).map(([g, d]) => bar(d.nombre, (x.globales[g] - 1) / 9 * 100, 'var(--c)', x.globales[g])).join('')}</div>
+      ${Object.entries(PF16_GLOBALS).map(([g, d]) => { const v = x.globales[g]; return `
+        <div class="dim-block" style="border-color:var(--c)"><h4>${d.nombre} — ${v >= 7.5 ? 'alta' : v <= 3.5 ? 'baja' : 'promedio'} (${v})</h4>
+        <p>${v >= 7.5 ? esc(d.alto) : v <= 3.5 ? esc(d.bajo) : 'Equilibrio entre ambos polos: ' + esc(d.bajo.toLowerCase().replace(/\.$/, '')) + ' / ' + esc(d.alto.toLowerCase())}</p></div>`; }).join('')}
+    </div>
+    <div class="card">
+      <h2>Rasgos destacados</h2>
+      ${extremos.length ? extremos.map(k => { const f = PF16_FACTORS[k], s = x.decatipos[k]; return `
+        <div class="dim-block" style="border-color:var(--accent)"><h4>${esc(f.nombre)} (${k}) — decatipo ${s}: ${esc(f.polos[s >= 8 ? 1 : 0])}</h4><p>${esc(s >= 8 ? f.alto : f.bajo)}</p></div>`; }).join('')
+        : '<p>No se observan rasgos extremos; el perfil se ubica en el rango promedio en todos los factores.</p>'}
+      <div class="note">Cuestionario original basado en el modelo de 16 factores de Cattell. <strong>No es el 16PF-5 oficial</strong> (IPAT/PSI; TEA Ediciones en español) ni utiliza sus ítems o baremos. Los decatipos se obtienen por transformación lineal del puntaje directo y son referenciales; la interpretación debe realizarla un profesional de psicología.</div>
+    </div>`;
+}
+
+function reportIE(r) {
+  const x = r.resultado;
+  return `
+    <div class="card">
+      <h2>Coeficiente emocional global: ${x.total}/125 — nivel ${x.nivelTotal}</h2>
+      <p>Cada dimensión tiene un rango de 5 a 25. Niveles referenciales: bajo 5–12, medio 13–19, alto 20–25.</p>
+      <div class="bars">
+        ${bar('Global', (x.total - 25) / 100 * 100, 'var(--accent)', x.total)}
+        ${Object.entries(IE_DIMS).map(([k, d]) => bar(d.nombre, (x.puntajes[k] - 5) / 20 * 100, d.color, `${x.puntajes[k]}/25`)).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Interpretación por dimensión</h2>
+      ${Object.entries(IE_DIMS).map(([k, d]) => `
+        <div class="dim-block" style="border-color:${d.color}"><h4>${d.nombre} — nivel ${x.niveles[k]}</h4>
+        <p class="muted">${esc(d.desc)}</p><p>${esc(d[x.niveles[k]])}</p></div>`).join('')}
+      <div class="note">Cuestionario original de autoinforme basado en el modelo de competencias emocionales de Goleman. Mide la percepción que la persona tiene de sí; se recomienda contrastar con entrevista conductual y referencias. Niveles sin baremo normativo.</div>
+    </div>`;
+}
+
+function reportCompetencias(r) {
+  const x = r.resultado, req = r.requeridos || {};
+  const gradeBadge = g => `<span class="grade" style="background:${GRADOS[g].color}">${g}</span>`;
+  const brecha = k => {
+    const q = req[k];
+    if (!q) return '<span class="muted">—</span>';
+    const d = GRADOS[q].pts - GRADOS[x.grados[k]].pts;
+    return d <= 0 ? '<span class="gap-ok">✓ Cumple</span>' : `<span class="gap-bad">Brecha de ${d} grado${d > 1 ? 's' : ''}</span>`;
+  };
+  return `
+    <div class="card">
+      <h2>Grados por competencia</h2>
+      <p>Escala de grados: <strong>A</strong> alto · <strong>B</strong> bueno, por encima del estándar · <strong>C</strong> mínimo necesario para el puesto · <strong>D</strong> insatisfactorio. Seleccione el <strong>grado requerido</strong> según el perfil del puesto para calcular las brechas (se guarda automáticamente).</p>
+      <div class="table-wrap"><table class="comp-table">
+        <thead><tr><th>Competencia</th><th>Tipo</th><th>Grado observado</th><th>Grado requerido</th><th>Brecha</th></tr></thead>
+        <tbody>${Object.entries(COMPETENCIAS).map(([k, c]) => `
+          <tr><td><strong>${esc(c.nombre)}</strong></td><td>${c.tipo}</td><td>${gradeBadge(x.grados[k])} <span class="muted">(${x.promedios[k].toFixed(1)})</span></td>
+          <td><select data-comp="${k}"><option value="">—</option>${'ABCD'.split('').map(g => `<option ${req[k] === g ? 'selected' : ''}>${g}</option>`).join('')}</select></td>
+          <td id="gap-${k}">${brecha(k)}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Guía de entrevista por competencias</h2>
+      <p>Preguntas por incidentes críticos para verificar cada competencia. Pida ejemplos concretos del pasado: <strong>situación, tarea, acción y resultado</strong>. Priorice las competencias con brecha o con grado C o D.</p>
+      ${Object.entries(COMPETENCIAS).map(([k, c]) => `
+        <div class="dim-block" style="border-color:${GRADOS[x.grados[k]].color}">
+          <h4>${esc(c.nombre)} — grado ${x.grados[k]}</h4>
+          <p class="muted">${esc(c.def)}</p>
+          <ul class="questions">${c.preguntas.map(q => `<li>${esc(q)}</li>`).join('')}</ul>
+        </div>`).join('')}
+      <div class="note">Instrumento de casos situacionales construido según la metodología de gestión por competencias de Martha Alles (competencias cardinales y específicas, grados A–D y análisis de brechas). Las definiciones y los casos son originales, no se tomaron del <em>Diccionario de competencias</em>. El resultado es una estimación inicial: el grado final debe confirmarse con la entrevista por competencias.</div>
+    </div>`;
+}
+
+// Guarda el grado requerido por competencia en el registro
+document.addEventListener('change', e => {
+  const k = e.target.dataset?.comp;
+  if (!k || !currentId) return;
+  const list = loadResults(), rec = list.find(r => r.id === currentId);
+  rec.requeridos = rec.requeridos || {};
+  if (e.target.value) rec.requeridos[k] = e.target.value; else delete rec.requeridos[k];
+  saveResults(list);
+  const y = window.scrollY;
+  showReport(currentId);
+  window.scrollTo(0, y);
+});
+
+const REPORTS = { disc: reportDisc, bigfive: reportBig5, razonamiento: reportChoice, pf16: report16pf, ie: reportIE, competencias: reportCompetencias };
+
 function showReport(id) {
   const r = loadResults().find(x => x.id === id);
   if (!r) { location.hash = ''; return; }
@@ -227,7 +329,7 @@ function showReport(id) {
         <dt>Duración</dt><dd>${esc(fmtDur(r.duracionSeg))}</dd>
       </dl>
     </div>
-    ${t.tipo === 'disc' ? reportDisc(r, t) : t.tipo === 'likert' ? reportBig5(r) : reportChoice(r, t)}
+    ${(REPORTS[r.prueba] || reportChoice)(r, t)}
     <div class="card">
       <h2>Observaciones de la persona evaluadora</h2>
       <p style="min-height:90px;border-bottom:1px solid var(--border)"></p>

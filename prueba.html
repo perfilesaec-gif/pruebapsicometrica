@@ -167,13 +167,15 @@ function buildItems() {
       </div>`).join('');
   } else {
     resp = test.items.map(() => null);
-    const opts = (it, i) => test.tipo === 'likert'
-      ? test.escala.map((lbl, v) => `<label class="opt"><input type="radio" name="q-${i}" value="${v}" data-g="${i}"><span>${esc(lbl)}</span></label>`).join('')
-      : it.o.map((lbl, v) => `<label class="opt"><input type="radio" name="q-${i}" value="${v}" data-g="${i}"><span>${String.fromCharCode(97 + v)}) ${esc(lbl)}</span></label>`).join('');
+    // Ítems con opciones propias (ejercicios o casos) se muestran como a), b), c)…; el resto usa la escala Likert
+    const opt = (i, v, lbl) => `<label class="opt"><input type="radio" name="q-${i}" value="${v}" data-g="${i}"><span>${lbl}</span></label>`;
+    const opts = (it, i) => it.o
+      ? it.o.map((o, v) => opt(i, v, `${String.fromCharCode(97 + v)}) ${esc(typeof o === 'string' ? o : o.t)}`)).join('')
+      : test.escala.map((lbl, v) => opt(i, v, esc(lbl))).join('');
     box.innerHTML = test.items.map((it, i) => `
       <div class="item-card" id="item-${i}">
         <div class="item-text"><span class="n">${i + 1}.</span>${esc(it.t)}</div>
-        <div class="options ${test.tipo === 'likert' ? 'likert' : ''}">${opts(it, i)}</div>
+        <div class="options ${it.o ? (it.o.some(o => typeof o !== 'string') ? 'stacked' : '') : 'likert'}">${opts(it, i)}</div>
       </div>`).join('');
   }
   box.addEventListener('change', onChange);

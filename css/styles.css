@@ -370,3 +370,29 @@ footer { text-align: center; font-size: 12px; color: var(--ink-soft); padding: 2
   .container { padding: 0; }
   .bar-fill, .pill { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* Opciones largas (casos situacionales) */
+.options.stacked { display: grid; grid-template-columns: 1fr; }
+.options.stacked .opt span { text-align: left; padding: 12px 16px; }
+
+/* Perfil de 16 factores */
+.sten-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.sten-table th, .sten-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.sten-table td.pole { color: var(--ink-soft); width: 20%; }
+.sten-table td.pole.r { text-align: right; }
+.sten-table td.fac { font-weight: 600; white-space: nowrap; }
+.sten-cells { display: grid; grid-template-columns: repeat(10, 1fr); gap: 3px; min-width: 200px; }
+.sten-cells span {
+  height: 20px; border-radius: 4px; background: var(--surface2); border: 1px solid var(--border);
+  font-size: 10px; display: flex; align-items: center; justify-content: center; color: var(--ink-soft);
+}
+.sten-cells span.mid { background: #F1EEE8; }
+.sten-cells span.on { background: var(--accent); border-color: var(--accent); color: white; font-weight: 700; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+
+/* Competencias */
+.grade { display: inline-block; min-width: 28px; text-align: center; padding: 3px 8px; border-radius: 6px; font-weight: 700; color: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.gap-ok { color: var(--mas); font-weight: 600; }
+.gap-bad { color: var(--accent); font-weight: 600; }
+.comp-table select { border: 1.5px solid var(--border); border-radius: 6px; padding: 5px 8px; font-family: inherit; background: var(--surface); }
+.questions li { margin-bottom: 6px; }
+@media print { .comp-table select { border: none; appearance: none; -webkit-appearance: none; } }
