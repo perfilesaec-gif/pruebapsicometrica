@@ -33,6 +33,7 @@
         </label>
         <button class="btn secondary small" id="exportCsv">Exportar a Excel (.csv)</button>
         <button class="btn secondary small" id="exportJson">Respaldo (.json)</button>
+        <button class="btn secondary small" id="testSheets">Probar conexión con Google Sheets</button>
         <span class="muted" id="importMsg"></span>
       </div>
       <div class="table-wrap">
@@ -110,6 +111,18 @@ $('importFile').onchange = async e => {
   $('importMsg').textContent = `Importados: ${ok}` + (dup ? ` · Duplicados omitidos: ${dup}` : '') + (bad ? ` · Archivos/registros no válidos: ${bad}` : '');
   e.target.value = '';
   renderList();
+};
+
+$('testSheets').onclick = async () => {
+  const msg = $('importMsg');
+  msg.textContent = 'Enviando fila de prueba…';
+  const r = await sendToEndpoint({
+    id: 'conexion-' + newId(), prueba: 'conexion', pruebaNombre: 'Prueba de conexión',
+    candidato: { nombre: 'Prueba de conexión', cargo: '—' }, fecha: new Date().toISOString(), duracionSeg: 0,
+    resultado: { resumen: 'Conexión OK' }, detalle: 'Fila de prueba: puede borrarla.'
+  });
+  msg.textContent = (r.ok ? '✓ ' : '✗ ') + r.detalle + (r.ok ? ' Revise la pestaña "Resultados" de su hoja.' : '');
+  msg.style.color = r.ok ? 'var(--mas)' : 'var(--accent)';
 };
 
 $('exportJson').onclick = () => downloadFile(`respaldo_resultados_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadResults(), null, 2), 'application/json');

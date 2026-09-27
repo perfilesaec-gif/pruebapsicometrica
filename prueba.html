@@ -262,7 +262,8 @@ async function finish(porTiempo) {
   };
   record.detalle = test.detalle ? test.detalle(record.resultado) : '';
   addResult(record);
-  const enviado = await sendToEndpoint(record);
+  const envio = await sendToEndpoint(record);
+  const enviado = envio.ok;
 
   $('stepTest').classList.add('hidden');
   $('stepDone').classList.remove('hidden');

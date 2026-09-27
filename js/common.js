@@ -26,13 +26,21 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
+// Envía el registro a Google Apps Script y confirma la recepción leyendo la respuesta ("ok").
+// Devuelve { ok, detalle }. No se reintenta para evitar filas duplicadas en la hoja.
 async function sendToEndpoint(rec) {
-  if (!CONFIG.endpointUrl) return false;
+  if (!CONFIG.endpointUrl) return { ok: false, detalle: 'No hay URL de Google Sheets configurada.' };
   try {
     // text/plain evita el preflight CORS; Apps Script lee el cuerpo con e.postData.contents
-    await fetch(CONFIG.endpointUrl, { method: 'POST', mode: 'no-cors', headers: { 'Content-Type': 'text/plain' }, body: JSON.stringify(rec) });
-    return true;
-  } catch (e) { return false; }
+    const res = await fetch(CONFIG.endpointUrl, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(rec) });
+    const txt = (await res.text()).trim();
+    if (txt === 'ok') return { ok: true, detalle: 'Registro recibido en Google Sheets.' };
+    if (/doPost/.test(txt)) return { ok: false, detalle: 'Apps Script responde, pero la versión publicada no tiene el código (falta la función doPost). Publique una versión nueva.' };
+    if (/getSheetByName/.test(txt)) return { ok: false, detalle: 'El script no está vinculado a una hoja. Debe crearse desde la hoja con Extensiones → Apps Script.' };
+    return { ok: false, detalle: 'Respuesta inesperada de Apps Script: ' + txt.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').slice(0, 200) };
+  } catch (e) {
+    return { ok: false, detalle: 'No se pudo conectar con Apps Script. Revise que el acceso sea "Cualquier usuario" y que la URL termine en /exec.' };
+  }
 }
 
 function downloadFile(name, content, type) {
