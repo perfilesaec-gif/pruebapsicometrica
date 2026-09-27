@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Panel de Talento Humano</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="header" data-watermark="INFORME">
+  <div class="header-inner">
+    <div class="header-tag">Uso exclusivo de Talento Humano</div>
+    <h1 id="h1">Panel de resultados</h1>
+    <p id="hp">Consulte, imprima y exporte los resultados de las evaluaciones. La información es confidencial: compártala solo con quienes participan en la decisión de selección.</p>
+    <nav class="header-nav"><a href="index.html">← Portal de pruebas</a><a href="#" id="backList" class="hidden">← Volver al listado</a></nav>
+  </div>
+</div>
+
+<div class="container wide">
+
+  <!-- LISTADO -->
+  <section id="listView">
+    <div class="card">
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Buscar por nombre, cédula o cargo…">
+        <select id="fTest"><option value="">Todas las pruebas</option></select>
+      </div>
+      <div class="toolbar no-print">
+        <label class="btn secondary small" style="cursor:pointer">Importar respuestas (.json)
+          <input type="file" id="importFile" accept=".json,application/json" multiple hidden>
+        </label>
+        <button class="btn secondary small" id="exportCsv">Exportar a Excel (.csv)</button>
+        <button class="btn secondary small" id="exportJson">Respaldo (.json)</button>
+        <span class="muted" id="importMsg"></span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Fecha</th><th>Persona evaluada</th><th>Cargo</th><th>Prueba</th><th>Resultado</th><th></th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="empty hidden" id="empty">Aún no hay resultados en este navegador. Las evaluaciones rendidas aquí aparecerán automáticamente; también puede importar los archivos .json que le envíen las personas evaluadas.</div>
+    </div>
+  </section>
+
+  <!-- INFORME -->
+  <section id="reportView" class="hidden">
+    <div class="btn-row no-print" style="margin-bottom:20px">
+      <button class="btn small" onclick="window.print()">Imprimir / Guardar PDF</button>
+      <button class="btn danger small" id="delBtn">Eliminar registro</button>
+    </div>
+    <div id="report"></div>
+  </section>
+</div>
+
+<footer>Resultados orientativos. Deben interpretarse por un profesional de psicología o Talento Humano y complementarse con entrevista por competencias, verificación de referencias y otras fuentes. Prohibido su uso con fines discriminatorios (Constitución art. 11.2; Código del Trabajo; Acuerdo Ministerial MDT-2017-0082).</footer>
+
+<script src="js/config.js"></script>
+<script src="js/tests.js"></script>
+<script src="js/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+let currentId = null;
+
+Object.values(TESTS).forEach(t => $('fTest').insertAdjacentHTML('beforeend', `<option value="${t.id}">${esc(t.nombre)}</option>`));
+
+// ---------- Listado ----------
+function renderList() {
+  const q = $('q').value.trim().toLowerCase();
+  const ft = $('fTest').value;
+  const list = loadResults()
+    .filter(r => !ft || r.prueba === ft)
+    .filter(r => !q || [r.candidato.nombre, r.candidato.documento, r.candidato.cargo].join(' ').toLowerCase().includes(q))
+    .sort((a, b) => b.fecha.localeCompare(a.fecha));
+  $('rows').innerHTML = list.map(r => `
+    <tr>
+      <td>${esc(fmtDate(r.fecha))}</td>
+      <td><strong>${esc(r.candidato.nombre)}</strong>${r.candidato.documento ? `<br><span class="muted">${esc(r.candidato.documento)}</span>` : ''}</td>
+      <td>${esc(r.candidato.cargo)}</td>
+      <td>${esc(TESTS[r.prueba]?.corto || r.prueba)}</td>
+      <td><span class="pill">${esc(r.resultado.resumen)}</span></td>
+      <td><a href="#${esc(r.id)}" class="btn secondary small">Ver informe</a></td>
+    </tr>`).join('');
+  $('empty').classList.toggle('hidden', list.length > 0);
+}
+$('q').oninput = renderList;
+$('fTest').onchange = renderList;
+
+// ---------- Importar / exportar ----------
+$('importFile').onchange = async e => {
+  const list = loadResults();
+  const ids = new Set(list.map(r => r.id));
+  let ok = 0, dup = 0, bad = 0;
+  for (const f of e.target.files) {
+    try {
+      const data = JSON.parse(await f.text());
+      for (const r of (Array.isArray(data) ? data : [data])) {
+        const t = TESTS[r?.prueba];
+        if (!t || !r.id || !r.candidato?.nombre || !Array.isArray(r.respuestas)) { bad++; continue; }
+        if (ids.has(r.id)) { dup++; continue; }
+        try { r.resultado = t.score(r.respuestas); } // se recalcula desde las respuestas originales
+        catch (err) { bad++; continue; }
+        list.push(r); ids.add(r.id); ok++;
+      }
+    } catch (err) { bad++; }
+  }
+  saveResults(list);
+  $('importMsg').textContent = `Importados: ${ok}` + (dup ? ` · Duplicados omitidos: ${dup}` : '') + (bad ? ` · Archivos/registros no válidos: ${bad}` : '');
+  e.target.value = '';
+  renderList();
+};
+
+$('exportJson').onclick = () => downloadFile(`respaldo_resultados_${new Date().toISOString().slice(0, 10)}.json`, JSON.stringify(loadResults(), null, 2), 'application/json');
+
+$('exportCsv').onclick = () => {
+  const cols = ['Fecha', 'Nombres', 'Documento', 'Correo', 'Cargo', 'Prueba', 'Duración (min)', 'Resultado', 'D', 'I', 'S', 'C', 'Extraversión', 'Amabilidad', 'Responsabilidad', 'Estabilidad emocional', 'Apertura', 'Aciertos', '% Aciertos', 'Detalle'];
+  const cell = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = loadResults().map(r => {
+    const x = r.resultado, d = x.dif || {}, p = x.puntajes || {};
+    return [fmtDate(r.fecha), r.candidato.nombre, r.candidato.documento, r.candidato.correo, r.candidato.cargo, r.pruebaNombre,
+      (r.duracionSeg / 60).toFixed(1), x.resumen, d.D, d.I, d.S, d.C, p.E, p.A, p.C, p.N, p.O, x.correctas, x.pct, TESTS[r.prueba]?.detalle ? TESTS[r.prueba].detalle(x) : ''].map(cell).join(';');
+  });
+  downloadFile(`resultados_${new Date().toISOString().slice(0, 10)}.csv`, '﻿' + [cols.map(cell).join(';'), ...rows].join('\r\n'), 'text/csv;charset=utf-8');
+};
+
+// ---------- Informe ----------
+function bar(label, pct, color, val, center) {
+  let style;
+  if (center) {
+    const w = Math.abs(pct) / 2;
+    style = pct >= 0 ? `left:50%;width:${w}%` : `left:${50 - w}%;width:${w}%`;
+  } else style = `width:${pct}%`;
+  return `<div class="bar-row"><span>${esc(label)}</span><div class="bar-track ${center ? 'center' : ''}"><div class="bar-fill" style="${style};background:${color}"></div></div><span class="bar-val">${esc(val)}</span></div>`;
+}
+
+function reportDisc(r, t) {
+  const x = r.resultado, n = t.grupos.length;
+  const orden = Object.keys(x.dif).sort((a, b) => x.dif[b] - x.dif[a]);
+  return `
+    <div class="card">
+      <h2>Perfil predominante: ${esc(x.perfil.split('').map(k => DISC_FACTORS[k].nombre).join(' – '))}</h2>
+      <p>El gráfico muestra la diferencia (MÁS − MENOS) de cada factor, en un rango de −${n} a +${n}. Valores a la derecha del centro indican que el factor está presente en su estilo habitual; a la izquierda, que es menos característico.</p>
+      <div class="bars">${orden.map(k => bar(DISC_FACTORS[k].nombre + ` (${k})`, x.dif[k] / n * 100, DISC_FACTORS[k].color, (x.dif[k] > 0 ? '+' : '') + x.dif[k], true)).join('')}</div>
+      <table class="disc-table">
+        <thead><tr><th>Factor</th><th>MÁS<br><span class="muted">Estilo bajo presión / adaptado</span></th><th>MENOS<br><span class="muted">Rechazo</span></th><th>Diferencia<br><span class="muted">Estilo habitual</span></th></tr></thead>
+        <tbody>${'DISC'.split('').map(k => `<tr><td>${DISC_FACTORS[k].nombre} (${k})</td><td>${x.mas[k]}</td><td>${x.menos[k]}</td><td><strong>${x.dif[k]}</strong></td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+    <div class="card">
+      <h2>Interpretación por factor</h2>
+      ${orden.map(k => { const f = DISC_FACTORS[k]; return `
+        <div class="dim-block" style="border-color:${f.color}">
+          <h4>${f.nombre} — ${x.dif[k] > 0 ? 'presente' : x.dif[k] === 0 ? 'equilibrado' : 'poco presente'} (${x.dif[k]})</h4>
+          <p class="muted">${esc(f.desc)}</p>
+          <p>${esc(x.dif[k] > 0 ? f.alto : f.bajo)}</p>
+        </div>`; }).join('')}
+      <div class="note">El DISC describe estilos de conducta, no capacidades ni valores. Ningún perfil es mejor que otro: el ajuste depende de las exigencias reales del cargo. La clave de calificación de esta versión debe ser validada por un profesional de psicología antes de usarse en decisiones.</div>
+    </div>`;
+}
+
+function reportBig5(r) {
+  const x = r.resultado;
+  return `
+    <div class="card">
+      <h2>Puntajes por factor</h2>
+      <p>Cada factor se mide con 4 ítems (rango 4 a 20). Niveles referenciales: bajo 4–9, medio 10–14, alto 15–20.</p>
+      <div class="bars">${Object.keys(BIG5_FACTORS).map(k => bar(BIG5_FACTORS[k].nombre, (x.puntajes[k] - 4) / 16 * 100, BIG5_FACTORS[k].color, `${x.puntajes[k]}/20`)).join('')}</div>
+    </div>
+    <div class="card">
+      <h2>Interpretación</h2>
+      ${Object.keys(BIG5_FACTORS).map(k => { const f = BIG5_FACTORS[k], lvl = x.niveles[k]; return `
+        <div class="dim-block" style="border-color:${f.color}">
+          <h4>${f.nombre} — nivel ${lvl}</h4>
+          <p>${esc(f[lvl])}</p>
+        </div>`; }).join('')}
+      <div class="note">Mini-IPIP (Donnellan et al., 2006), ítems de dominio público del International Personality Item Pool. Los niveles son referenciales y no cuentan con baremos para población ecuatoriana; úselos como insumo para la entrevista, no como criterio de exclusión.</div>
+    </div>`;
+}
+
+function reportChoice(r, t) {
+  const x = r.resultado;
+  return `
+    <div class="card">
+      <h2>${x.correctas} de ${x.total} aciertos (${x.pct} %) — ${esc(x.nivel)}</h2>
+      ${r.finalizadaPorTiempo ? '<p><strong>La prueba se envió automáticamente al agotarse el tiempo.</strong></p>' : ''}
+      <div class="bars">
+        ${bar('Total', x.pct, 'var(--mas)', x.pct + ' %')}
+        ${Object.entries(x.porArea).map(([a, v]) => bar(a, v.correctas / v.total * 100, 'var(--c)', `${v.correctas}/${v.total}`)).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Detalle de respuestas</h2>
+      <div class="table-wrap"><table class="answers">
+        <thead><tr><th>#</th><th>Ejercicio</th><th>Respuesta</th><th>Correcta</th><th></th></tr></thead>
+        <tbody>${t.items.map((it, i) => { const v = r.respuestas[i]; return `
+          <tr><td>${i + 1}</td><td>${esc(it.t)}</td><td>${v === null || v === undefined ? '<span class="muted">Sin responder</span>' : esc(it.o[v])}</td><td>${esc(it.o[it.a])}</td><td class="${v === it.a ? 'ok' : 'bad'}">${v === it.a ? '✓' : '✗'}</td></tr>`; }).join('')}
+        </tbody>
+      </table></div>
+      <div class="note">Niveles referenciales: Superior ≥ 80 %, Promedio alto 60–79 %, Promedio 40–59 %, En desarrollo &lt; 40 %. Considere ajustes razonables para personas con discapacidad (Ley Orgánica de Discapacidades).</div>
+    </div>`;
+}
+
+function report16pf(r) {
+  const x = r.resultado;
+  const cells = s => Array.from({ length: 10 }, (_, i) => `<span class="${i + 1 === s ? 'on' : i >= 3 && i <= 6 ? 'mid' : ''}">${i + 1}</span>`).join('');
+  const extremos = Object.keys(PF16_FACTORS).filter(k => x.decatipos[k] <= 3 || x.decatipos[k] >= 8);
+  return `
+    ${x.manejoImagenAlto ? `<div class="note" style="margin:0 0 24px;border-color:#FCA5A5;background:#FEF2F2;color:#991B1B"><strong>Atención — Manejo de imagen alto (${x.manejoImagen}/20).</strong> La persona respondió de forma que tiende a dar una imagen muy favorable de sí. Interprete el perfil con cautela y contrástelo en la entrevista.</div>` : ''}
+    <div class="card">
+      <h2>Perfil de los 16 factores primarios</h2>
+      <p>Decatipos referenciales del 1 al 10. La franja central (4–7) corresponde a valores promedio; los extremos (1–3 y 8–10) describen rasgos marcados hacia el polo izquierdo o derecho.</p>
+      <div class="table-wrap"><table class="sten-table">
+        <thead><tr><th>Factor</th><th style="text-align:right">Polo bajo (1–3)</th><th>Decatipo</th><th>Polo alto (8–10)</th></tr></thead>
+        <tbody>${Object.entries(PF16_FACTORS).map(([k, f]) => `
+          <tr><td class="fac">${k} · ${esc(f.nombre)}</td><td class="pole r">${esc(f.polos[0])}</td><td><div class="sten-cells">${cells(x.decatipos[k])}</div></td><td class="pole">${esc(f.polos[1])}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Dimensiones globales</h2>
+      <div class="bars">${Object.entries(PF16_GLOBALS).map(([g, d]) => bar(d.nombre, (x.globales[g] - 1) / 9 * 100, 'var(--c)', x.globales[g])).join('')}</div>
+      ${Object.entries(PF16_GLOBALS).map(([g, d]) => { const v = x.globales[g]; return `
+        <div class="dim-block" style="border-color:var(--c)"><h4>${d.nombre} — ${v >= 7.5 ? 'alta' : v <= 3.5 ? 'baja' : 'promedio'} (${v})</h4>
+        <p>${v >= 7.5 ? esc(d.alto) : v <= 3.5 ? esc(d.bajo) : 'Equilibrio entre ambos polos: ' + esc(d.bajo.toLowerCase().replace(/\.$/, '')) + ' / ' + esc(d.alto.toLowerCase())}</p></div>`; }).join('')}
+    </div>
+    <div class="card">
+      <h2>Rasgos destacados</h2>
+      ${extremos.length ? extremos.map(k => { const f = PF16_FACTORS[k], s = x.decatipos[k]; return `
+        <div class="dim-block" style="border-color:var(--accent)"><h4>${esc(f.nombre)} (${k}) — decatipo ${s}: ${esc(f.polos[s >= 8 ? 1 : 0])}</h4><p>${esc(s >= 8 ? f.alto : f.bajo)}</p></div>`; }).join('')
+        : '<p>No se observan rasgos extremos; el perfil se ubica en el rango promedio en todos los factores.</p>'}
+      <div class="note">Cuestionario original basado en el modelo de 16 factores de Cattell. <strong>No es el 16PF-5 oficial</strong> (IPAT/PSI; TEA Ediciones en español) ni utiliza sus ítems o baremos. Los decatipos se obtienen por transformación lineal del puntaje directo y son referenciales; la interpretación debe realizarla un profesional de psicología.</div>
+    </div>`;
+}
+
+function reportIE(r) {
+  const x = r.resultado;
+  return `
+    <div class="card">
+      <h2>Coeficiente emocional global: ${x.total}/125 — nivel ${x.nivelTotal}</h2>
+      <p>Cada dimensión tiene un rango de 5 a 25. Niveles referenciales: bajo 5–12, medio 13–19, alto 20–25.</p>
+      <div class="bars">
+        ${bar('Global', (x.total - 25) / 100 * 100, 'var(--accent)', x.total)}
+        ${Object.entries(IE_DIMS).map(([k, d]) => bar(d.nombre, (x.puntajes[k] - 5) / 20 * 100, d.color, `${x.puntajes[k]}/25`)).join('')}
+      </div>
+    </div>
+    <div class="card">
+      <h2>Interpretación por dimensión</h2>
+      ${Object.entries(IE_DIMS).map(([k, d]) => `
+        <div class="dim-block" style="border-color:${d.color}"><h4>${d.nombre} — nivel ${x.niveles[k]}</h4>
+        <p class="muted">${esc(d.desc)}</p><p>${esc(d[x.niveles[k]])}</p></div>`).join('')}
+      <div class="note">Cuestionario original de autoinforme basado en el modelo de competencias emocionales de Goleman. Mide la percepción que la persona tiene de sí; se recomienda contrastar con entrevista conductual y referencias. Niveles sin baremo normativo.</div>
+    </div>`;
+}
+
+function reportCompetencias(r) {
+  const x = r.resultado, req = r.requeridos || {};
+  const gradeBadge = g => `<span class="grade" style="background:${GRADOS[g].color}">${g}</span>`;
+  const brecha = k => {
+    const q = req[k];
+    if (!q) return '<span class="muted">—</span>';
+    const d = GRADOS[q].pts - GRADOS[x.grados[k]].pts;
+    return d <= 0 ? '<span class="gap-ok">✓ Cumple</span>' : `<span class="gap-bad">Brecha de ${d} grado${d > 1 ? 's' : ''}</span>`;
+  };
+  return `
+    <div class="card">
+      <h2>Grados por competencia</h2>
+      <p>Escala de grados: <strong>A</strong> alto · <strong>B</strong> bueno, por encima del estándar · <strong>C</strong> mínimo necesario para el puesto · <strong>D</strong> insatisfactorio. Seleccione el <strong>grado requerido</strong> según el perfil del puesto para calcular las brechas (se guarda automáticamente).</p>
+      <div class="table-wrap"><table class="comp-table">
+        <thead><tr><th>Competencia</th><th>Tipo</th><th>Grado observado</th><th>Grado requerido</th><th>Brecha</th></tr></thead>
+        <tbody>${Object.entries(COMPETENCIAS).map(([k, c]) => `
+          <tr><td><strong>${esc(c.nombre)}</strong></td><td>${c.tipo}</td><td>${gradeBadge(x.grados[k])} <span class="muted">(${x.promedios[k].toFixed(1)})</span></td>
+          <td><select data-comp="${k}"><option value="">—</option>${'ABCD'.split('').map(g => `<option ${req[k] === g ? 'selected' : ''}>${g}</option>`).join('')}</select></td>
+          <td id="gap-${k}">${brecha(k)}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2>Guía de entrevista por competencias</h2>
+      <p>Preguntas por incidentes críticos para verificar cada competencia. Pida ejemplos concretos del pasado: <strong>situación, tarea, acción y resultado</strong>. Priorice las competencias con brecha o con grado C o D.</p>
+      ${Object.entries(COMPETENCIAS).map(([k, c]) => `
+        <div class="dim-block" style="border-color:${GRADOS[x.grados[k]].color}">
+          <h4>${esc(c.nombre)} — grado ${x.grados[k]}</h4>
+          <p class="muted">${esc(c.def)}</p>
+          <ul class="questions">${c.preguntas.map(q => `<li>${esc(q)}</li>`).join('')}</ul>
+        </div>`).join('')}
+      <div class="note">Instrumento de casos situacionales construido según la metodología de gestión por competencias de Martha Alles (competencias cardinales y específicas, grados A–D y análisis de brechas). Las definiciones y los casos son originales, no se tomaron del <em>Diccionario de competencias</em>. El resultado es una estimación inicial: el grado final debe confirmarse con la entrevista por competencias.</div>
+    </div>`;
+}
+
+// Guarda el grado requerido por competencia en el registro
+document.addEventListener('change', e => {
+  const k = e.target.dataset?.comp;
+  if (!k || !currentId) return;
+  const list = loadResults(), rec = list.find(r => r.id === currentId);
+  rec.requeridos = rec.requeridos || {};
+  if (e.target.value) rec.requeridos[k] = e.target.value; else delete rec.requeridos[k];
+  saveResults(list);
+  const y = window.scrollY;
+  showReport(currentId);
+  window.scrollTo(0, y);
+});
+
+const REPORTS = { disc: reportDisc, bigfive: reportBig5, razonamiento: reportChoice, pf16: report16pf, ie: reportIE, competencias: reportCompetencias };
+
+function showReport(id) {
+  const r = loadResults().find(x => x.id === id);
+  if (!r) { location.hash = ''; return; }
+  const t = TESTS[r.prueba];
+  currentId = id;
+  const c = r.candidato;
+  $('h1').textContent = 'Informe: ' + r.pruebaNombre;
+  $('hp').textContent = 'Documento confidencial — ' + CONFIG.organizacion;
+  $('listView').classList.add('hidden');
+  $('reportView').classList.remove('hidden');
+  $('backList').classList.remove('hidden');
+  $('report').innerHTML = `
+    <div class="card report-head">
+      <dl>
+        <dt>Persona evaluada</dt><dd><strong>${esc(c.nombre)}</strong></dd>
+        ${c.documento ? `<dt>Documento</dt><dd>${esc(c.documento)}</dd>` : ''}
+        ${c.correo ? `<dt>Correo</dt><dd>${esc(c.correo)}</dd>` : ''}
+        <dt>Cargo</dt><dd>${esc(c.cargo)}</dd>
+      </dl>
+      <dl>
+        <dt>Prueba</dt><dd>${esc(r.pruebaNombre)}</dd>
+        <dt>Fecha</dt><dd>${esc(fmtDate(r.fecha))}</dd>
+        <dt>Duración</dt><dd>${esc(fmtDur(r.duracionSeg))}</dd>
+      </dl>
+    </div>
+    ${(REPORTS[r.prueba] || reportChoice)(r, t)}
+    <div class="card">
+      <h2>Observaciones de la persona evaluadora</h2>
+      <p style="min-height:90px;border-bottom:1px solid var(--border)"></p>
+      <p class="muted" style="margin-top:40px">Firma y nombre: ______________________________</p>
+    </div>`;
+  window.scrollTo(0, 0);
+}
+
+function showList() {
+  currentId = null;
+  $('h1').textContent = 'Panel de resultados';
+  $('hp').textContent = 'Consulte, imprima y exporte los resultados de las evaluaciones. La información es confidencial: compártala solo con quienes participan en la decisión de selección.';
+  $('reportView').classList.add('hidden');
+  $('listView').classList.remove('hidden');
+  $('backList').classList.add('hidden');
+  renderList();
+}
+
+$('backList').onclick = e => { e.preventDefault(); location.hash = ''; };
+
+$('delBtn').onclick = () => {
+  if (!currentId || !confirm('¿Eliminar definitivamente este registro de este navegador? Esta acción no se puede deshacer.')) return;
+  saveResults(loadResults().filter(r => r.id !== currentId));
+  location.hash = '';
+};
+
+function route() {
+  const id = decodeURIComponent(location.hash.slice(1));
+  id ? showReport(id) : showList();
+}
+window.addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>

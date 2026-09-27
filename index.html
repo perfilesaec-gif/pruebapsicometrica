@@ -1,2 +1,52 @@
-# pruebapsicometrica
-Prueba psicometrica Perfiles
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pruebas Psicométricas</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<div class="header" data-watermark="PSICO">
+  <div class="header-inner">
+    <div class="header-tag" id="org">Talento Humano</div>
+    <h1>Evaluaciones Psicométricas</h1>
+    <p>Bienvenida, bienvenido. Seleccione la prueba que le indicó el equipo de Talento Humano. Sus respuestas se tratan de forma confidencial y se usan únicamente como un elemento complementario del proceso de selección.</p>
+    <nav class="header-nav"><a href="panel.html">Panel de Talento Humano →</a></nav>
+  </div>
+</div>
+
+<div class="container">
+  <div class="catalog" id="catalog"></div>
+
+  <div class="card" style="margin-top:32px">
+    <h2>Antes de empezar</h2>
+    <ul>
+      <li>Busque un lugar tranquilo y reserve el tiempo indicado en cada prueba.</li>
+      <li>Responda con sinceridad: no hay respuestas buenas ni malas en las pruebas de personalidad.</li>
+      <li>Si necesita algún ajuste razonable (por ejemplo, por discapacidad visual o motriz), comuníquelo a Talento Humano antes de iniciar.</li>
+      <li>No se le solicitarán datos sobre edad, estado civil, embarazo, religión, orientación sexual, etnia u otros que puedan generar discriminación.</li>
+    </ul>
+  </div>
+</div>
+
+<footer>Los resultados son orientativos y no constituyen por sí solos un diagnóstico ni el único criterio de decisión.</footer>
+
+<script src="js/config.js"></script>
+<script src="js/tests.js"></script>
+<script src="js/common.js"></script>
+<script>
+  document.getElementById('org').textContent = CONFIG.organizacion + ' · Talento Humano';
+  document.getElementById('catalog').innerHTML = Object.values(TESTS).map(t => `
+    <a class="test-card" href="prueba.html?t=${t.id}">
+      <span class="badge">${esc(t.categoria)}</span>
+      <h3>${esc(t.nombre)}</h3>
+      <p>${esc(t.descripcion)}</p>
+      <div class="meta"><span>⏱ ${esc(t.duracion)}</span></div>
+      <span class="go">Iniciar prueba →</span>
+    </a>`).join('');
+</script>
+</body>
+</html>
