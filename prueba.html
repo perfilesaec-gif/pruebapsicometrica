@@ -260,6 +260,7 @@ async function finish(porTiempo) {
     respuestas,
     resultado: test.score(respuestas)
   };
+  record.detalle = test.detalle ? test.detalle(record.resultado) : '';
   addResult(record);
   const enviado = await sendToEndpoint(record);
 
