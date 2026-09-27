@@ -99,7 +99,8 @@ const TESTS = {
       const orden = Object.keys(dif).sort((a, b) => dif[b] - dif[a]);
       const perfil = orden.filter(k => dif[k] > 0).slice(0, 2).join('') || orden[0];
       return { mas, menos, dif, perfil, resumen: `Perfil ${perfil}` };
-    }
+    },
+    detalle(x) { return Object.keys(x.dif).map(k => `${k}: MÁS ${x.mas[k]} / MENOS ${x.menos[k]} / Dif ${x.dif[k]}`).join(' · '); }
   },
 
   bigfive: {
@@ -150,7 +151,8 @@ const TESTS = {
       });
       const altos = Object.keys(niveles).filter(k => niveles[k] === 'alto').map(k => BIG5_FACTORS[k].nombre);
       return { puntajes, niveles, resumen: altos.length ? 'Alto: ' + altos.join(', ') : 'Sin rasgos altos' };
-    }
+    },
+    detalle(x) { return Object.keys(x.puntajes).map(k => `${BIG5_FACTORS[k].nombre}: ${x.puntajes[k]}/20 (${x.niveles[k]})`).join(' · '); }
   },
 
   razonamiento: {
@@ -193,7 +195,8 @@ const TESTS = {
       const pct = Math.round((correctas / total) * 100);
       const nivel = pct >= 80 ? 'Superior' : pct >= 60 ? 'Promedio alto' : pct >= 40 ? 'Promedio' : 'En desarrollo';
       return { correctas, total, pct, nivel, porArea, resumen: `${correctas}/${total} (${nivel})` };
-    }
+    },
+    detalle(x) { return Object.entries(x.porArea).map(([a, v]) => `${a}: ${v.correctas}/${v.total}`).join(' · '); }
   }
 };
 
